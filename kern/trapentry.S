@@ -8,6 +8,7 @@
 #include <kern/picirq.h>
 
 
+
 ###################################################################
 # exceptions/interrupts
 ###################################################################
@@ -51,6 +52,31 @@
    pusha,popa so you will find these macros handy.
  */
 
+ 
+	/* whether or not to use error code found here:
+	 * www3.cs.stonybrook.edu/~porter/courses/cse506/f14/ref/i386/s09_10.htm
+	 */
+	TRAPHANDLER_NOEC(divide_handler, T_DIVIDE)
+	TRAPHANDLER_NOEC(debug_handler, T_DEBUG)
+	TRAPHANDLER_NOEC(nmi_handler, T_NMI)
+	TRAPHANDLER_NOEC(brkpt_handler, T_BRKPT)
+	TRAPHANDLER_NOEC(oflow_handler, T_OFLOW)
+	TRAPHANDLER_NOEC(bound_handler, T_BOUND)
+	TRAPHANDLER_NOEC(illop_handler, T_ILLOP)
+	TRAPHANDLER_NOEC(device_handler, T_DEVICE)
+	TRAPHANDLER(dblflt_handler, T_DBLFLT)
+	TRAPHANDLER(tss_handler, T_TSS)
+	TRAPHANDLER(segnp_handler, T_SEGNP)
+	TRAPHANDLER(stack_handler, T_STACK)
+	TRAPHANDLER(gpflt_handler, T_GPFLT)
+	TRAPHANDLER(pgflt_handler, T_PGFLT)
+	TRAPHANDLER_NOEC(fperr_handler, T_FPERR)
+	TRAPHANDLER(align_handler, T_ALIGN)
+	TRAPHANDLER_NOEC(mchk_handler, T_MCHK)
+	TRAPHANDLER_NOEC(simderr_handler, T_SIMDERR)
+	TRAPHANDLER_NOEC(syscall_handler, T_SYSCALL)
+	TRAPHANDLER_NOEC(default_handler, T_DEFAULT)
+
 
 
 /*
@@ -60,3 +86,29 @@
  *       for how to pass a pointer to the trapframe.
  */
 
+
+_alltraps:
+	
+	/*xorq %rax,%rax
+	 *movw %ds, %ax
+	 *push %ds
+	 *movw %es, %ax
+	 *push %es
+	 */ // this is all wrong, I cannot mess rax
+	 
+	subq $16, %rsp
+	movq $0, 0(%rsp)
+	movq $0, 8(%rsp)
+	movw %es, 0(%rsp)
+	movw %ds, 8(%rsp)
+	PUSHA
+	
+	movw $GD_KD, %ax
+	movw %ax, %ds
+	movw %ax, %es
+	
+	// @@@ move the first arg into rdi, as the struct Trapframe *tf
+	// @@@ http://eli.thegreenplace.net/2011/09/06/stack-frame-layout-on-x86-64/
+	
+	movq %rsp, %rdi
+	call trap

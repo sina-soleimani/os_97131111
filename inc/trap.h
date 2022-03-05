@@ -97,6 +97,7 @@ struct UTrapframe {
 	uintptr_t utf_rsp;
 } __attribute__((packed));
 
+
 #endif /* !__ASSEMBLER__ */
 
 #endif /* !JOS_INC_TRAP_H */

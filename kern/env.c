@@ -17,7 +17,9 @@
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
 
+
 struct Env *envs = NULL;		// All environments
+struct Env *curenv = NULL;		// The current env
 static struct Env *env_free_list;	// Free environment list
 // (linked by Env->env_link)
 
@@ -123,6 +125,24 @@ env_init(void)
 {
 	// Set up envs array
 	// LAB 3: Your code here.
+	struct Env* last_env = NULL;
+	size_t i;
+	for (i = 0; i < NENV; i++) {
+		envs[i].env_id = 0;
+		envs[i].env_parent_id = 0;
+		envs[i].env_status = ENV_FREE;
+		envs[i].env_link = NULL;
+		envs[i].env_runs = 0;
+		envs[i].env_pml4e = NULL;
+		envs[i].env_cr3 = 0;
+		
+		if (last_env)
+			last_env->env_link = &envs[i];
+		else
+			env_free_list = &envs[i];
+		last_env = &envs[i];
+		
+}
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -189,6 +209,13 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
+	memset(page2kva(p), 0, PGSIZE);
+	e->env_cr3 = (physaddr_t)page2pa(p);
+	e->env_pml4e = page2kva(p);
+   p->pp_ref++;
+   
+   for (i = PML4(UTOP); i < NPMLENTRIES; i++)
+	e->env_pml4e[i] = boot_pml4e[i];
 
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
@@ -281,6 +308,19 @@ static void
 region_alloc(struct Env *e, void *va, size_t len)
 {
 	// LAB 3: Your code here.
+	uintptr_t va_al = ROUNDDOWN((uintptr_t)va, PGSIZE);
+	uintptr_t va_len = (uintptr_t)ROUNDUP((char*)va_al + len, PGSIZE);
+	int size = (va_len - va_al) / PGSIZE;
+	
+	int i;
+	
+	for (i=0; i<size; i++) {
+		struct PageInfo* pp = page_alloc(0);
+		if (pp == NULL)
+			panic("region_alloc(): allocate new page failed! %e", pp);
+		int result = page_insert(e->env_pml4e, pp, (void*)va_al, PTE_USER);
+		va_al = (uintptr_t)((char*)va_al + PGSIZE);
+}
 	// (But only if you need it for load_icode.)
 	//
 	// Hint: It is easier to use region_alloc if the caller can pass
@@ -343,11 +383,36 @@ load_icode(struct Env *e, uint8_t *binary)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here
+
+	struct Elf* pbin = (struct Elf*) binary;
+	struct Proghdr *ph, *eph;
+	int i;
+
+	
+	ph = (struct Proghdr *) ((char *) pbin + pbin->e_phoff);
+	eph = ph + pbin->e_phnum;
+	
+	for (; ph < eph; ph++) {
+		
+		if (ph->p_type == ELF_PROG_LOAD) {
+			region_alloc(e, (void*)ph->p_va, ph->p_memsz);
+			lcr3(e->env_cr3);			
+			memset((void*)ph->p_va, 0, ph->p_memsz);
+			char *va = (char*)ph->p_va;
+			char *ps = (char*)pbin + ph->p_offset;
+			for (i = 0; i < ph->p_filesz; i++)
+				va[i] = ps[i];
+		
+			lcr3(boot_cr3);
+		}
+	}
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
+	region_alloc(e, (void*)(USTACKTOP - PGSIZE), PGSIZE);
 
 	// LAB 3: Your code here.
-	e->elf = binary;
+	e->env_tf.tf_rip = pbin->e_entry;
+ e->elf = binary;
 }
 
 //
@@ -361,6 +426,15 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+
+	struct Env *newenv;
+
+	if (env_alloc(&newenv, 0) < 0)
+		panic("env_create(): failed to allocate new Env!\n");
+	
+	load_icode(newenv, binary);
+	newenv->env_type = type;
+	newenv->env_parent_id = 0;
 }
 
 //
@@ -441,6 +515,7 @@ env_free(struct Env *e)
 // Frees environment e.
 // If e was the current env, then runs a new environment (and does not return
 // to the caller).
+
 //
 void
 env_destroy(struct Env *e)
@@ -458,6 +533,7 @@ env_destroy(struct Env *e)
 		curenv = NULL;
 		sched_yield();
 	}
+
 }
 
 
@@ -472,6 +548,7 @@ env_pop_tf(struct Trapframe *tf)
 {
 	// Record the CPU we are running on for user-space debugging
 	curenv->env_cpunum = cpunum();
+
 	__asm __volatile("movq %0,%%rsp\n"
 			 POPA
 			 "movw (%%rsp),%%es\n"
@@ -511,6 +588,18 @@ env_run(struct Env *e)
 
 	// LAB 3: Your code here.
 
-	panic("env_run not yet implemented");
+	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
+		curenv->env_status = ENV_RUNNABLE;
+	
+	curenv = e;
+	curenv->env_status = ENV_RUNNING;
+	curenv->env_runs++;
+	lcr3(curenv->env_cr3);
+	
+	struct PushRegs regs = curenv->env_tf.tf_regs;
+
+	env_pop_tf(&(curenv->env_tf));
+	//panic("env_run not yet implemented");
+
 }
 

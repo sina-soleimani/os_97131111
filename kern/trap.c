@@ -14,6 +14,7 @@
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
 
+
 extern uintptr_t gdtdesc_64;
 struct Taskstate ts;
 extern struct Segdesc gdt[];
@@ -67,12 +68,54 @@ static const char *trapname(int trapno)
 }
 
 
+extern void divide_handler();
+extern void debug_handler();
+extern void nmi_handler();
+extern void brkpt_handler();
+extern void oflow_handler();
+extern void bound_handler();
+extern void illop_handler();
+extern void device_handler();
+extern void dblflt_handler();
+extern void tss_handler();
+extern void segnp_handler();
+extern void stack_handler();
+extern void gpflt_handler();
+extern void pgflt_handler();
+extern void fperr_handler();
+extern void align_handler();
+extern void mchk_handler();
+extern void simderr_handler();
+extern void syscall_handler();
+extern void default_handler();
 void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
+
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, divide_handler, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, debug_handler, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, nmi_handler, 0);
+	SETGATE(idt[T_BRKPT], 0, GD_KT, brkpt_handler, 3);
+	SETGATE(idt[T_OFLOW], 0, GD_KT, oflow_handler, 0);
+	SETGATE(idt[T_BOUND], 0, GD_KT, bound_handler, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, illop_handler, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, device_handler, 0);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, dblflt_handler, 0);
+	SETGATE(idt[T_TSS], 0, GD_KT, tss_handler, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, segnp_handler, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, stack_handler, 0);
+	SETGATE(idt[T_GPFLT], 0, GD_KT, gpflt_handler, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, pgflt_handler, 0);
+	SETGATE(idt[T_FPERR], 0, GD_KT, fperr_handler, 0);
+	SETGATE(idt[T_ALIGN], 0, GD_KT, align_handler, 0);
+	SETGATE(idt[T_MCHK], 0, GD_KT, mchk_handler, 0);
+	SETGATE(idt[T_SIMDERR], 0, GD_KT, simderr_handler, 0);
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
+	SETGATE(idt[T_DEFAULT], 0, GD_KT, default_handler, 0);
+
 	idt_pd.pd_lim = sizeof(idt)-1;
 	idt_pd.pd_base = (uint64_t)idt;
 	// Per-CPU setup
@@ -107,6 +150,7 @@ trap_init_percpu(void)
 	// LAB 4: Your code here:
 
 
+
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
 	ts.ts_esp0 = KSTACKTOP;
@@ -125,6 +169,7 @@ void
 print_trapframe(struct Trapframe *tf)
 {
 	cprintf("TRAP frame at %p from CPU %d\n", tf, cpunum());
+
 	print_regs(&tf->tf_regs);
 	cprintf("  es   0x----%04x\n", tf->tf_es);
 	cprintf("  ds   0x----%04x\n", tf->tf_ds);
@@ -179,6 +224,23 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+  	if (tf->tf_trapno == T_PGFLT)
+	{
+		page_fault_handler(tf);
+		return;
+	}
+	
+	else if (tf->tf_trapno == T_BRKPT)
+	{
+		monitor(tf);
+		return;
+	}
+	
+	else if (tf->tf_trapno == T_SYSCALL)
+	{
+		tf->tf_regs.reg_rax = syscall(tf->tf_regs.reg_rax, tf->tf_regs.reg_rdx, tf->tf_regs.reg_rcx, tf->tf_regs.reg_rbx, tf->tf_regs.reg_rdi, tf->tf_regs.reg_rsi);
+		return;
+	}
 
 	// Handle spurious interrupts
 	// The hardware sometimes raises these because of noise on the
@@ -193,10 +255,12 @@ trap_dispatch(struct Trapframe *tf)
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
 
+
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
 	if (tf->tf_cs == GD_KT)
 		panic("unhandled trap in kernel");
+
 	else {
 		env_destroy(curenv);
 		return;
@@ -220,6 +284,7 @@ trap(struct Trapframe *tf)
 	// sched_yield()
 	if (xchg(&thiscpu->cpu_status, CPU_STARTED) == CPU_HALTED)
 		lock_kernel();
+
 	// Check that interrupts are disabled.  If this assertion
 	// fails, DO NOT be tempted to fix it by inserting a "cli" in
 	// the interrupt path.
@@ -238,6 +303,7 @@ trap(struct Trapframe *tf)
 			curenv = NULL;
 			sched_yield();
 		}
+
 
 		// Copy trap frame (which is currently on the stack)
 		// into 'curenv->env_tf', so that running the environment
@@ -261,6 +327,7 @@ trap(struct Trapframe *tf)
 		env_run(curenv);
 	else
 		sched_yield();
+
 }
 
 
@@ -309,6 +376,7 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",

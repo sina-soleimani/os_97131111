@@ -54,6 +54,7 @@ struct Env {
 	uint32_t env_runs;		// Number of times environment has run
 	int env_cpunum;			// The CPU that the env is running on
 
+
 	// Address space
 	pml4e_t *env_pml4e;		// Kernel virtual address of top-level page dir,
 	// or root of extended page tables in guest mode.

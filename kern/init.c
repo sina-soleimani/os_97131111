@@ -18,6 +18,7 @@
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
 
+
 uint64_t end_debug;
 
 static void boot_aps(void);
@@ -69,6 +70,7 @@ i386_init(void)
 
 
 
+
 #if defined(TEST)
 	// Don't touch -- used by grading script!
 	ENV_CREATE(TEST, ENV_TYPE_USER);
@@ -111,6 +113,7 @@ boot_aps(void)
 		while(c->cpu_status != CPU_STARTED)
 			;
 	}
+
 }
 
 // Setup code for APs

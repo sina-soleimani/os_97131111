@@ -19,6 +19,7 @@ getchar(void)
 	// sys_cgetc does not block, but getchar should.
 	while ((r = sys_cgetc()) == 0)
 		sys_yield();
+
 	return r;
 }
 
