@@ -255,6 +255,12 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+	if (tf->tf_trapno == IRQ_OFFSET + IRQ_TIMER)
+	{
+		lapic_eoi();
+		sched_yield();
+		return;
+	}
 
 
 	// Unexpected trap: The user process or the kernel has a bug.
@@ -344,6 +350,10 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+		if(tf->tf_cs == GD_KT || tf->tf_cs == GD_KD) {
+		panic("Page fault in kernel mode!!");
+		print_trapframe(tf);
+		}
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.
@@ -378,6 +388,34 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+	
+	if (curenv->env_pgfault_upcall)
+	{
+		uint64_t last_rsp = tf->tf_rsp;
+		
+		if (!(tf->tf_rsp < UXSTACKTOP && tf->tf_rsp >= UXSTACKTOP-PGSIZE))
+			tf->tf_rsp = UXSTACKTOP;
+		else
+			tf->tf_rsp -= 8;
+		
+		uint64_t* ptr = (uint64_t*)tf->tf_rsp;
+		user_mem_assert(curenv, (void*)(ptr - 20), 160, PTE_W);
+		
+		lcr3(curenv->env_cr3);
+		
+		*(ptr - 1) = last_rsp;
+		*(ptr - 2) = tf->tf_eflags;
+		*(ptr - 3) = tf->tf_rip;
+		*(struct PushRegs*)(ptr - 18) = tf->tf_regs;	// @@@ not -4, should be -18
+		*(ptr - 19) = tf->tf_err;
+		*(ptr - 20) = fault_va;
+		lcr3(boot_cr3);
+		
+		tf->tf_rsp = (uintptr_t)(ptr - 20);
+		tf->tf_rip = (uintptr_t)curenv->env_pgfault_upcall;
+		
+		env_run(curenv);
+	}
 
 
 	// Destroy the environment that caused the fault.
