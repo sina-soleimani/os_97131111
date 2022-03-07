@@ -364,6 +364,13 @@ mem_init_mp(void)
 	//     Permissions: kernel RW, user NONE
 	//
 	// LAB 4: Your code here:
+	uint64_t c;
+	uintptr_t kstacktop_c;
+	for (c = 0; c < NCPU; c++)
+	{
+		kstacktop_c = KSTACKTOP - c * (KSTKSIZE + KSTKGAP);
+		boot_map_region(boot_pml4e, kstacktop_c-KSTKSIZE, KSTKSIZE, PADDR(percpu_kstacks[c]), PTE_W);
+}
 
 }
 
@@ -410,13 +417,14 @@ page_init(void)
 	// NB: Remember to mark the memory used for initial boot page table i.e (va>=BOOT_PAGE_TABLE_START && va < BOOT_PAGE_TABLE_END) as in-use (not free)
 	size_t i;
 	struct PageInfo* last = NULL;
-
 	char*  first_free_page = (char *) boot_alloc(0);
-
+	
+	
 	for (i = 0; i < npages; i++) {
 				if((i == 0)
 			|| (&pages[i] >= pa2page((physaddr_t)IOPHYSMEM) && (uintptr_t)page2kva(&pages[i]) < (uintptr_t)first_free_page)
-			|| (&pages[i] >= pa2page((physaddr_t)0x8000) && &pages[i] < pa2page((physaddr_t)0xe000)))
+			|| (&pages[i] >= pa2page((physaddr_t)0x8000) && &pages[i] < pa2page((physaddr_t)0xe000))
+			|| (&pages[i] == pa2page((physaddr_t)MPENTRY_PADDR)))
 		{
 
 			// @@@ pp_ref = 1: Page Not Available on the free page list
@@ -434,6 +442,11 @@ page_init(void)
 
 		}
 	}
+	#ifdef DEBUG
+	uint64_t err_pp = 0x800432fff0;
+	struct PageInfo* errpp = (struct PageInfo*)err_pp;
+	errpp = errpp->pp_link;
+	#endif
 	
 }
 //
@@ -826,7 +839,14 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	size_t top = ROUNDUP(size, PGSIZE);
+	if (base + top > MMIOLIM)
+		panic("mmio map exceeds MMIOLIM!");
+	boot_map_region(boot_pml4e, base, top, pa, PTE_PCD|PTE_PWT|PTE_W);
+	void *result = (void*)base;
+	base += top;
+	return result;
+	//panic("mmio_map_region not implemented");
 
 }
 

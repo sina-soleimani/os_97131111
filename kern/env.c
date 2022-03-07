@@ -19,7 +19,7 @@
 
 
 struct Env *envs = NULL;		// All environments
-struct Env *curenv = NULL;		// The current env
+
 static struct Env *env_free_list;	// Free environment list
 // (linked by Env->env_link)
 
@@ -597,6 +597,8 @@ env_run(struct Env *e)
 	lcr3(curenv->env_cr3);
 	
 	struct PushRegs regs = curenv->env_tf.tf_regs;
+	
+	unlock_kernel();
 
 	env_pop_tf(&(curenv->env_tf));
 	//panic("env_run not yet implemented");
