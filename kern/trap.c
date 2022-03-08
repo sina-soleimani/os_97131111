@@ -88,6 +88,24 @@ extern void mchk_handler();
 extern void simderr_handler();
 extern void syscall_handler();
 extern void default_handler();
+
+extern void irq0_handler();
+extern void irq1_handler();
+extern void irq2_handler();
+extern void irq3_handler();
+extern void irq4_handler();
+extern void irq5_handler();
+extern void irq6_handler();
+extern void irq7_handler();
+extern void irq8_handler();
+extern void irq9_handler();
+extern void irq10_handler();
+extern void irq11_handler();
+extern void irq12_handler();
+extern void irq13_handler();
+extern void irq14_handler();
+extern void irq15_handler();
+
 void
 trap_init(void)
 {
@@ -115,6 +133,23 @@ trap_init(void)
 	SETGATE(idt[T_SIMDERR], 0, GD_KT, simderr_handler, 0);
 	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
 	SETGATE(idt[T_DEFAULT], 0, GD_KT, default_handler, 0);
+	
+	SETGATE(idt[IRQ_OFFSET], 0, GD_KT, irq0_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+1], 0, GD_KT, irq1_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+2], 0, GD_KT, irq2_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+3], 0, GD_KT, irq3_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+4], 0, GD_KT, irq4_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+5], 0, GD_KT, irq5_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+6], 0, GD_KT, irq6_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+7], 0, GD_KT, irq7_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+8], 0, GD_KT, irq8_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+9], 0, GD_KT, irq9_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+10], 0, GD_KT, irq10_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+11], 0, GD_KT, irq11_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+12], 0, GD_KT, irq12_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+13], 0, GD_KT, irq13_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+14], 0, GD_KT, irq14_handler, 0);
+	SETGATE(idt[IRQ_OFFSET+15], 0, GD_KT, irq15_handler, 0);
 
 	idt_pd.pd_lim = sizeof(idt)-1;
 	idt_pd.pd_base = (uint64_t)idt;
