@@ -13,9 +13,13 @@
 #include <kern/monitor.h>
 #include <kern/macro.h>
 #include <kern/dwarf_api.h>
+#include <kern/sched.h>
+#include <kern/cpu.h>
+#include <kern/spinlock.h>
+
 
 struct Env *envs = NULL;		// All environments
-struct Env *curenv = NULL;		// The current env
+
 static struct Env *env_free_list;	// Free environment list
 // (linked by Env->env_link)
 
@@ -36,7 +40,7 @@ static struct Env *env_free_list;	// Free environment list
 // definition of gdt specifies the Descriptor Privilege Level (DPL)
 // of that descriptor: 0 for kernel and 3 for user.
 //
-	struct Segdesc gdt[] =
+struct Segdesc gdt[2*NCPU + 5] =
 {
 	// 0x0 - unused (always faults -- for trapping NULL far pointers)
 
@@ -54,7 +58,8 @@ static struct Env *env_free_list;	// Free environment list
 	// 0x20 - user data segment
 	[GD_UD >> 3] = SEG64(STA_W, 0x0, 0xffffffff,3),
 
-	// 0x28 - tss, initialized in trap_init_percpu()
+	// Per-CPU TSS descriptors (starting from GD_TSS0) are initialized
+	// in trap_init_percpu()
 	[GD_TSS0 >> 3] = SEG_NULL,
 
 	[6] = SEG_NULL //last 8 bytes of the tss since tss is 16 bytes long
@@ -275,6 +280,16 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 	e->env_tf.tf_cs = GD_UT | 3;
 	// You will set e->env_tf.tf_rip later.
 
+	// Enable interrupts while in user mode.
+	// LAB 4: Your code here.
+	e->env_tf.tf_eflags |= FL_IF;
+
+	// Clear the page fault handler until user installs one.
+	e->env_pgfault_upcall = 0;
+
+	// Also clear the IPC receiving flag.
+	e->env_ipc_recving = 0;
+
 	// commit the allocation
 	env_free_list = e->env_link;
 	*newenv_store = e;
@@ -369,6 +384,7 @@ load_icode(struct Env *e, uint8_t *binary)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here
+
 	struct Elf* pbin = (struct Elf*) binary;
 	struct Proghdr *ph, *eph;
 	int i;
@@ -411,6 +427,7 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+
 	struct Env *newenv;
 
 	if (env_alloc(&newenv, 0) < 0)
@@ -497,15 +514,27 @@ env_free(struct Env *e)
 
 //
 // Frees environment e.
+// If e was the current env, then runs a new environment (and does not return
+// to the caller).
+
 //
 void
 env_destroy(struct Env *e)
 {
+	// If e is currently running on other CPUs, we change its state to
+	// ENV_DYING. A zombie environment will be freed the next time
+	// it traps to the kernel.
+	if (e->env_status == ENV_RUNNING && curenv != e) {
+		e->env_status = ENV_DYING;
+		return;
+	}
 
 	env_free(e);
-	cprintf("Destroyed the only environment - nothing more to do!\n");
-	while (1)
-		monitor(NULL);
+	if (curenv == e) {
+		curenv = NULL;
+		sched_yield();
+	}
+
 }
 
 
@@ -518,6 +547,9 @@ env_destroy(struct Env *e)
 void
 env_pop_tf(struct Trapframe *tf)
 {
+	// Record the CPU we are running on for user-space debugging
+	curenv->env_cpunum = cpunum();
+
 	__asm __volatile("movq %0,%%rsp\n"
 			 POPA
 			 "movw (%%rsp),%%es\n"
@@ -556,6 +588,7 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
+
 	if (curenv != NULL && curenv->env_status == ENV_RUNNING)
 		curenv->env_status = ENV_RUNNABLE;
 	
@@ -565,8 +598,11 @@ env_run(struct Env *e)
 	lcr3(curenv->env_cr3);
 	
 	struct PushRegs regs = curenv->env_tf.tf_regs;
+	
+	unlock_kernel();
 
 	env_pop_tf(&(curenv->env_tf));
 	//panic("env_run not yet implemented");
+
 }
 
