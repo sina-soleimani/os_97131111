@@ -1,6 +1,6 @@
 set $lastcs = -1
 set $amd64 = -1
-
+set $amd32 = 0
 define hook-stop
   # There doesn't seem to be a good way to detect if we're in 16- or
   # 32-bit mode, but we always run with CS == 8 in 32-bit mode.
